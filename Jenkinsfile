@@ -70,30 +70,34 @@ pipeline {
                     echo "Updating image versions in values.yaml..."
                     script {
                         def valuesFile = "${HELM_CHART_PATH}/values.yaml"
+                        // Always use 'dev' tag for DEV environment
+                        def imageTag = 'dev'
                         
                         if (params.SERVICE == 'all' || params.SERVICE == 'backend' || params.SERVICE == 'auth') {
                             sh """
                                 sed -i 's|repository:.*auth|repository: ${DOCKER_USERNAME}/auth|g' ${valuesFile} || true
-                                sed -i 's|tag:.*|tag: ${params.IMAGE_VERSION}|g' ${valuesFile} || true
+                                sed -i '/auth:/,/tag:/ s|tag:.*|tag: ${imageTag}|g' ${valuesFile} || true
                             """
                         }
                         
                         if (params.SERVICE == 'all' || params.SERVICE == 'backend' || params.SERVICE == 'users') {
                             sh """
                                 sed -i 's|repository:.*users|repository: ${DOCKER_USERNAME}/users|g' ${valuesFile} || true
+                                sed -i '/users:/,/tag:/ s|tag:.*|tag: ${imageTag}|g' ${valuesFile} || true
                             """
                         }
                         
                         if (params.SERVICE == 'all' || params.SERVICE == 'backend' || params.SERVICE == 'items') {
                             sh """
                                 sed -i 's|repository:.*items|repository: ${DOCKER_USERNAME}/items|g' ${valuesFile} || true
+                                sed -i '/items:/,/tag:/ s|tag:.*|tag: ${imageTag}|g' ${valuesFile} || true
                             """
                         }
                         
                         if (params.SERVICE == 'all' || params.SERVICE == 'frontend') {
                             sh """
                                 sed -i 's|repository:.*frontend|repository: ${DOCKER_USERNAME}/frontend|g' ${valuesFile} || true
-                                sed -i 's|tag:.*|tag: ${params.IMAGE_VERSION}|g' ${valuesFile} || true
+                                sed -i '/frontend:/,/tag:/ s|tag:.*|tag: ${imageTag}|g' ${valuesFile} || true
                             """
                         }
                     }
