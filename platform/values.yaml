@@ -13,7 +13,7 @@ auth:
   
   image:
     repository: leogrv22/auth
-    tag: latest
+    tag: dev
     pullPolicy: Always
   
   service:
@@ -36,7 +36,7 @@ users:
   
   image:
     repository: leogrv22/users
-    tag: latest
+    tag: dev
     pullPolicy: Always
   
   service:
@@ -59,7 +59,7 @@ items:
   
   image:
     repository: leogrv22/items
-    tag: latest
+    tag: dev
     pullPolicy: Always
   
   service:
@@ -82,7 +82,7 @@ frontend:
   
   image:
     repository: leogrv22/frontend
-    tag: latest
+    tag: dev
     pullPolicy: Always
   
   service:

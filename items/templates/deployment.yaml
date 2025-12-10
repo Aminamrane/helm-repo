@@ -1,19 +1,19 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "auth.fullname" . }}
+  name: {{ include "items.fullname" . }}
   labels:
-    {{ include "auth.labels" . | nindent 4 }}
+    {{ include "items.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      app.kubernetes.io/name: {{ include "auth.name" . }}
+      app.kubernetes.io/name: {{ include "items.name" . }}
       app.kubernetes.io/instance: {{ .Release.Name }}
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: {{ include "auth.name" . }}
+        app.kubernetes.io/name: {{ include "items.name" . }}
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
       initContainers:
@@ -24,10 +24,13 @@ spec:
             - |
               echo "Checking database availability..."
               {{- if .Values.global.useExternalSecrets }}
-              # AWS RDS - Pas besoin d'attendre un pod
-              echo "Using AWS RDS (managed database)"
-              echo "Database is already available"
-              sleep 5
+              # AWS RDS - Vérifier la connectivité réseau
+              echo "Using AWS RDS: {{ .Values.global.database.host }}"
+              until nc -z {{ .Values.global.database.host }} {{ .Values.global.database.port }} 2>/dev/null; do
+                echo "Waiting for RDS database at {{ .Values.global.database.host }}:{{ .Values.global.database.port }}...";
+                sleep 3;
+              done
+              echo "RDS database is reachable!"
               {{- else }}
               # K3s - Attendre le pod PostgreSQL
               echo "Waiting for PostgreSQL pod..."
@@ -39,7 +42,7 @@ spec:
               {{- end }}
       
       containers:
-        - name: auth
+        - name: items
           image: "{{ .Values.global.imageRegistry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
@@ -49,7 +52,7 @@ spec:
           # Variables d'environnement depuis ConfigMap et Secret
           envFrom:
             - configMapRef:
-                name: {{ include "auth.fullname" . }}-config
+                name: {{ include "items.fullname" . }}-config
             {{- if .Values.global.useExternalSecrets }}
             # AWS - Utiliser le secret créé par ESO
             - secretRef:
@@ -57,7 +60,7 @@ spec:
             {{- else }}
             # K3s - Utiliser le secret classique
             - secretRef:
-                name: {{ include "auth.fullname" . }}-secret
+                name: {{ include "items.fullname" . }}-secret
             {{- end }}
           
           # Health checks

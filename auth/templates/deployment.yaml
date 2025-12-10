@@ -24,10 +24,13 @@ spec:
             - |
               echo "Checking database availability..."
               {{- if .Values.global.useExternalSecrets }}
-              # AWS RDS - Pas besoin d'attendre un pod
-              echo "Using AWS RDS (managed database)"
-              echo "Database is already available"
-              sleep 5
+              # AWS RDS - Vérifier la connectivité réseau
+              echo "Using AWS RDS: {{ .Values.global.database.host }}"
+              until nc -z {{ .Values.global.database.host }} {{ .Values.global.database.port }} 2>/dev/null; do
+                echo "Waiting for RDS database at {{ .Values.global.database.host }}:{{ .Values.global.database.port }}...";
+                sleep 3;
+              done
+              echo "RDS database is reachable!"
               {{- else }}
               # K3s - Attendre le pod PostgreSQL
               echo "Waiting for PostgreSQL pod..."
