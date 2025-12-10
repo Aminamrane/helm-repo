@@ -106,32 +106,27 @@ pipeline {
                 script {
                     echo "Deploying to Kubernetes namespace: ${params.NAMESPACE}"
                     
-                    withCredentials([file(credentialsId: "${KUBECONFIG_CREDENTIALS}", variable: 'KUBECONFIG_FILE')]) {
-                        sh """
-                            export KUBECONFIG=\${KUBECONFIG_FILE}
+                    withCredentials([
+                        file(credentialsId: "${KUBECONFIG_CREDENTIALS}", variable: 'KUBECONFIG_FILE'),
+                        string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
+                        string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
+                    ]) {
+                        sh '''
+                            export KUBECONFIG=${KUBECONFIG_FILE}
+                            export AWS_DEFAULT_REGION=eu-west-3
                             
                             # Create namespace if it doesn't exist
-                            kubectl create namespace ${params.NAMESPACE} || true
+                            kubectl create namespace ''' + params.NAMESPACE + ''' || true
                             
                             # Deploy with Helm
-                            cd ${HELM_CHART_PATH}
+                            cd ''' + HELM_CHART_PATH + '''
                             
-                            if [ "${params.SERVICE}" == "all" ]; then
-                                echo "Deploying full platform..."
-                                helm upgrade --install platform . \\
-                                    --namespace ${params.NAMESPACE} \\
-                                    --wait \\
-                                    --timeout 10m
-                            else
-                                echo "Deploying service: ${params.SERVICE}"
-                                # For individual services, we can use helm upgrade with specific values
-                                helm upgrade --install platform . \\
-                                    --namespace ${params.NAMESPACE} \\
-                                    --set ${params.SERVICE}.image.tag=${params.IMAGE_VERSION} \\
-                                    --wait \\
-                                    --timeout 10m
-                            fi
-                        """
+                            echo "Deploying full platform..."
+                            helm upgrade --install platform . \
+                                --namespace ''' + params.NAMESPACE + ''' \
+                                --wait \
+                                --timeout 10m
+                        '''
                     }
                 }
             }
@@ -141,20 +136,25 @@ pipeline {
             steps {
                 script {
                     echo "Verifying deployment..."
-                    withCredentials([file(credentialsId: "${KUBECONFIG_CREDENTIALS}", variable: 'KUBECONFIG_FILE')]) {
-                        sh """
-                            export KUBECONFIG=\${KUBECONFIG_FILE}
+                    withCredentials([
+                        file(credentialsId: "${KUBECONFIG_CREDENTIALS}", variable: 'KUBECONFIG_FILE'),
+                        string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
+                        string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
+                    ]) {
+                        sh '''
+                            export KUBECONFIG=${KUBECONFIG_FILE}
+                            export AWS_DEFAULT_REGION=eu-west-3
                             
                             # Wait for pods to be ready
-                            kubectl wait --for=condition=ready pod \\
-                                -l app.kubernetes.io/instance=platform \\
-                                -n ${params.NAMESPACE} \\
+                            kubectl wait --for=condition=ready pod \
+                                -l app.kubernetes.io/instance=platform \
+                                -n ''' + params.NAMESPACE + ''' \
                                 --timeout=300s || true
                             
                             # Show deployment status
-                            kubectl get pods -n ${params.NAMESPACE}
-                            kubectl get svc -n ${params.NAMESPACE}
-                        """
+                            kubectl get pods -n ''' + params.NAMESPACE + '''
+                            kubectl get svc -n ''' + params.NAMESPACE + '''
+                        '''
                     }
                 }
             }
