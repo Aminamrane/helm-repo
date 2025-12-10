@@ -27,7 +27,7 @@ pipeline {
     environment {
         DOCKER_USERNAME = 'leogrv22'
         HELM_CHART_PATH = 'platform'
-        KUBECONFIG_CREDENTIALS = 'kubeconfig-credentials'
+        KUBECONFIG_CREDENTIALS = 'kubeconfig-dev'
     }
     
     stages {
