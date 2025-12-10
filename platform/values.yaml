@@ -1,5 +1,7 @@
 # Global configuration
 global:
+  useExternalSecrets: true
+  imageRegistry: "docker.io"
   database:
     host: "microservices-platform-dev-db.cvrhlcdjhuda.eu-west-3.rds.amazonaws.com"
     port: 5432
