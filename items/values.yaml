@@ -1,0 +1,19 @@
+replicaCount: 1
+
+image:
+  registry: docker.io
+  repository: leogrv22/items
+  tag: dev
+  pullPolicy: IfNotPresent
+
+env:
+  APP_ENV: dev
+
+secrets:
+  SECRET_KEY: ""
+  DATABASE_URL: ""
+
+resources: {}
+
+ingress:
+  enabled: false

@@ -1,0 +1,91 @@
+# Auth Service
+auth:
+  enabled: true
+  replicaCount: 1
+  
+  image:
+    repository: leogrv22/auth
+    tag: dev
+    pullPolicy: Always
+  
+  service:
+    type: NodePort
+    port: 80
+    targetPort: 8000
+    nodePort: 30081
+  
+  env:
+    APP_ENV: dev
+  
+  resources: {}
+  ingress:
+    enabled: false
+
+# Users Service
+users:
+  enabled: true
+  replicaCount: 1
+  
+  image:
+    repository: leogrv22/users
+    tag: dev
+    pullPolicy: Always
+  
+  service:
+    type: NodePort 
+    port: 80
+    targetPort: 8000
+    nodePort: 30082 
+  
+  env:
+    APP_ENV: dev
+  
+  resources: {}
+  ingress:
+    enabled: false
+
+# Items Service
+items:
+  enabled: true
+  replicaCount: 1
+  
+  image:
+    repository: leogrv22/items
+    tag: dev
+    pullPolicy: Always
+  
+  service:
+    type: NodePort
+    port: 80
+    targetPort: 8000
+    nodePort: 30083
+  
+  env:
+    APP_ENV: dev
+  
+  resources: {}
+  ingress:
+    enabled: false
+
+# Frontend Service
+frontend:
+  enabled: true
+  replicaCount: 1
+  
+  image:
+    repository: leogrv22/frontend
+    tag: dev
+    pullPolicy: Always
+  
+  service:
+    type: NodePort
+    port: 3000
+    targetPort: 3000
+    nodePort: 30080
+  
+  env:
+    NEXT_PUBLIC_API_BASE: "http://localhost"
+  
+  resources: {}
+  ingress:
+    enabled: false

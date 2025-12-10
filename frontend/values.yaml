@@ -1,0 +1,17 @@
+replicaCount: 1
+
+image:
+  registry: docker.io  
+  repository: leogrv22/frontend
+  tag: dev
+  pullPolicy: IfNotPresent
+
+env:
+  NEXT_PUBLIC_API_BASE: "http://54.229.164.217"
+
+service:
+  port: 3000
+
+ingress:
+  enabled: true
+  path: /

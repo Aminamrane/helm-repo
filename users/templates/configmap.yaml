@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "users.fullname" . }}-config
+data:
+  APP_ENV: {{ .Values.env.APP_ENV | default "dev" | quote }}
+  {{- if not .Values.global.useExternalSecrets }}
+  DATABASE_HOST: {{ .Values.global.database.host | quote }}
+  DATABASE_PORT: {{ .Values.global.database.port | quote }}
+  DATABASE_NAME: {{ .Values.global.database.name | quote }}
+  DATABASE_USER: {{ .Values.global.database.user | quote }}
+  DATABASE_PASSWORD: {{ .Values.global.database.password | quote }}
+  {{- end }}

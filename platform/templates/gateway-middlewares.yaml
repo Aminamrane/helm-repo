@@ -1,0 +1,47 @@
+# Middleware pour enlever /auth du chemin
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-auth-prefix
+  namespace: dev
+spec:
+  stripPrefix:
+    prefixes:
+      - /auth
+
+---
+# Middleware pour enlever /users du chemin
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-users-prefix
+  namespace: dev
+spec:
+  stripPrefix:
+    prefixes:
+      - /users
+
+---
+# Middleware pour enlever /items du chemin
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-items-prefix
+  namespace: dev
+spec:
+  stripPrefix:
+    prefixes:
+      - /items
+
+---
+# Rate limiting (optionnel mais recommandé)
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: rate-limit
+  namespace: dev
+spec:
+  rateLimit:
+    average: 100
+    period: 1m
+    burst: 50
