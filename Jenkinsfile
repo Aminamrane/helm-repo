@@ -202,6 +202,13 @@ PYEOF
                             # Uninstall old release if exists (to clean up old resources)
                             helm uninstall platform --namespace ${params.NAMESPACE} || true
                             
+                            # Force delete any remaining pods/deployments
+                            kubectl delete deployment --all -n ${params.NAMESPACE} --force --grace-period=0 || true
+                            kubectl delete pod --all -n ${params.NAMESPACE} --force --grace-period=0 || true
+                            
+                            # Wait a bit for cleanup
+                            sleep 5
+                            
                             echo "Deploying full platform..."
                             helm upgrade --install platform . \
                                 --namespace ${params.NAMESPACE} \
