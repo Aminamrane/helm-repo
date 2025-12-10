@@ -1,3 +1,11 @@
+# Global configuration
+global:
+  database:
+    host: "microservices-platform-dev-db.cvrhlcdjhuda.eu-west-3.rds.amazonaws.com"
+    port: 5432
+    name: "platform"
+    user: "admin"
+
 # Auth Service
 auth:
   enabled: true
