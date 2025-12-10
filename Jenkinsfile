@@ -213,7 +213,7 @@ PYEOF
                             helm upgrade --install platform . \
                                 --namespace ${params.NAMESPACE} \
                                 --wait \
-                                --timeout 10m
+                                --timeout 20m
                         """
                     }
                 }
