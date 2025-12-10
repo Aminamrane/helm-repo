@@ -153,21 +153,48 @@ pipeline {
                             # Create namespace if it doesn't exist
                             kubectl create namespace ${params.NAMESPACE} || true
                             
-                            # Get database password from AWS Secrets Manager
+                            # Get database password from AWS Secrets Manager and create Kubernetes Secret
                             echo "Fetching database password from AWS Secrets Manager..."
-                            SECRET_JSON=\$(aws secretsmanager get-secret-value \\
-                                --secret-id microservices-platform-dev-secrets \\
-                                --region eu-west-3 \\
-                                --query 'SecretString' \\
-                                --output text)
-                            DB_PASSWORD=\$(python3 -c "import sys, json; print(json.loads(sys.stdin.read())['rds_master_password'])" <<< "\${SECRET_JSON}")
-                            
-                            # Create Kubernetes Secret for database credentials
-                            kubectl create secret generic database-credentials \\
-                                --from-literal=password="\${DB_PASSWORD}" \\
-                                --from-literal=username="admin" \\
-                                --namespace ${params.NAMESPACE} \\
-                                --dry-run=client -o yaml | kubectl apply -f -
+                            export K8S_NAMESPACE=${params.NAMESPACE}
+                            python3 << 'PYEOF'
+import json
+import subprocess
+import sys
+import os
+
+# Get secret from AWS
+result = subprocess.run([
+    'aws', 'secretsmanager', 'get-secret-value',
+    '--secret-id', 'microservices-platform-dev-secrets',
+    '--region', 'eu-west-3',
+    '--query', 'SecretString',
+    '--output', 'text'
+], capture_output=True, text=True)
+
+if result.returncode != 0:
+    print(f'Error fetching secret: {result.stderr}', file=sys.stderr)
+    sys.exit(1)
+
+secret_json = json.loads(result.stdout.strip())
+db_password = secret_json['rds_master_password']
+namespace = os.environ.get('K8S_NAMESPACE', 'dev')
+
+# Write password to temp file to avoid shell escaping issues
+with open('/tmp/db_password.txt', 'w') as f:
+    f.write(db_password)
+
+# Create and apply Kubernetes Secret using --from-file
+secret_yaml = subprocess.check_output([
+    'kubectl', 'create', 'secret', 'generic', 'database-credentials',
+    '--from-file=password=/tmp/db_password.txt',
+    '--from-literal=username=admin',
+    '--namespace', namespace,
+    '--dry-run=client', '-o', 'yaml'
+], text=True)
+
+subprocess.run(['kubectl', 'apply', '-f', '-'], input=secret_yaml, text=True, check=True)
+print('Database secret created successfully')
+PYEOF
                             
                             # Deploy with Helm
                             cd ${HELM_CHART_PATH}
