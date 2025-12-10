@@ -123,6 +123,9 @@ pipeline {
                             # Deploy with Helm
                             cd ${HELM_CHART_PATH}
                             
+                            # Uninstall old release if exists (to clean up old Traefik resources)
+                            helm uninstall platform --namespace ${params.NAMESPACE} || true
+                            
                             echo "Deploying full platform..."
                             helm upgrade --install platform . \
                                 --namespace ${params.NAMESPACE} \
