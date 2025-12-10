@@ -153,6 +153,22 @@ pipeline {
                             # Create namespace if it doesn't exist
                             kubectl create namespace ${params.NAMESPACE} || true
                             
+                            # Get database password from AWS Secrets Manager
+                            echo "Fetching database password from AWS Secrets Manager..."
+                            SECRET_JSON=\$(aws secretsmanager get-secret-value \\
+                                --secret-id microservices-platform-dev-secrets \\
+                                --region eu-west-3 \\
+                                --query 'SecretString' \\
+                                --output text)
+                            DB_PASSWORD=\$(python3 -c "import sys, json; print(json.loads(sys.stdin.read())['rds_master_password'])" <<< "\${SECRET_JSON}")
+                            
+                            # Create Kubernetes Secret for database credentials
+                            kubectl create secret generic database-credentials \\
+                                --from-literal=password="\${DB_PASSWORD}" \\
+                                --from-literal=username="admin" \\
+                                --namespace ${params.NAMESPACE} \\
+                                --dry-run=client -o yaml | kubectl apply -f -
+                            
                             # Deploy with Helm
                             cd ${HELM_CHART_PATH}
                             
