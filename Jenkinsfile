@@ -9,7 +9,7 @@ pipeline {
         )
         string(
             name: 'IMAGE_VERSION',
-            defaultValue: 'latest',
+            defaultValue: 'dev',
             description: 'Docker image version/tag to deploy'
         )
         string(
