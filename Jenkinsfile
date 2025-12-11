@@ -148,6 +148,8 @@ pipeline {
                         string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
                         string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
                     ]) {
+
+                        // 1) Création/MAJ du secret DB depuis AWS Secrets Manager (en shell)
                         sh """
                             export KUBECONFIG=\${KUBECONFIG_FILE}
                             export AWS_ACCESS_KEY_ID=\${AWS_ACCESS_KEY_ID}
@@ -157,9 +159,9 @@ pipeline {
                             # Create namespace if it doesn't exist
                             kubectl create namespace ${params.NAMESPACE} || true
                             
-                            # Get database password from AWS Secrets Manager and create Kubernetes Secret
                             echo "Fetching database password from AWS Secrets Manager..."
                             export K8S_NAMESPACE=${params.NAMESPACE}
+                            
                             python3 << 'PYEOF'
 import json
 import subprocess
@@ -199,21 +201,62 @@ secret_yaml = subprocess.check_output([
 subprocess.run(['kubectl', 'apply', '-f', '-'], input=secret_yaml, text=True, check=True)
 print('Database secret created successfully')
 PYEOF
-                            
-                            # Deploy with Helm
+                        """
+
+                        // 2) Construire les commandes de cleanup en GROOVY (pas dans sh)
+                        List<String> cleanupCommands = []
+
+                        if (params.SERVICE == 'backend') {
+                            echo "Deploying backend services only (auth, users, items, gateway)..."
+                            cleanupCommands = [
+                                "kubectl delete deployment -n ${params.NAMESPACE} platform-auth --force --grace-period=0 || true",
+                                "kubectl delete deployment -n ${params.NAMESPACE} platform-users --force --grace-period=0 || true",
+                                "kubectl delete deployment -n ${params.NAMESPACE} platform-items --force --grace-period=0 || true"
+                            ]
+                        } else if (params.SERVICE == 'frontend') {
+                            echo "Deploying frontend service only..."
+                            cleanupCommands = [
+                                "kubectl delete deployment -n ${params.NAMESPACE} platform-frontend --force --grace-period=0 || true"
+                            ]
+                        } else if (params.SERVICE == 'auth') {
+                            echo "Deploying auth service only..."
+                            cleanupCommands = [
+                                "kubectl delete deployment -n ${params.NAMESPACE} platform-auth --force --grace-period=0 || true"
+                            ]
+                        } else if (params.SERVICE == 'users') {
+                            echo "Deploying users service only..."
+                            cleanupCommands = [
+                                "kubectl delete deployment -n ${params.NAMESPACE} platform-users --force --grace-period=0 || true"
+                            ]
+                        } else if (params.SERVICE == 'items') {
+                            echo "Deploying items service only..."
+                            cleanupCommands = [
+                                "kubectl delete deployment -n ${params.NAMESPACE} platform-items --force --grace-period=0 || true"
+                            ]
+                        } else {
+                            echo "Deploying full platform (all services)..."
+                            cleanupCommands = [
+                                "helm uninstall platform --namespace ${params.NAMESPACE} || true",
+                                "kubectl delete deployment --all -n ${params.NAMESPACE} --force --grace-period=0 || true",
+                                "kubectl delete pod --all -n ${params.NAMESPACE} --force --grace-period=0 || true"
+                            ]
+                        }
+
+                        // 3) Exécuter les commandes de cleanup (en shell, une par une)
+                        if (!cleanupCommands.isEmpty()) {
+                            cleanupCommands.each { cmd ->
+                                sh """
+                                    export KUBECONFIG=\${KUBECONFIG_FILE}
+                                    ${cmd}
+                                """
+                            }
+                            sleep 3
+                        }
+
+                        // 4) Lancer le helm upgrade global (qui va recréer ce qu'on a supprimé)
+                        sh """
+                            export KUBECONFIG=\${KUBECONFIG_FILE}
                             cd ${HELM_CHART_PATH}
-                            
-                            # Uninstall old release if exists (to clean up old resources)
-                            helm uninstall platform --namespace ${params.NAMESPACE} || true
-                            
-                            # Force delete any remaining pods/deployments
-                            kubectl delete deployment --all -n ${params.NAMESPACE} --force --grace-period=0 || true
-                            kubectl delete pod --all -n ${params.NAMESPACE} --force --grace-period=0 || true
-                            
-                            # Wait a bit for cleanup
-                            sleep 5
-                            
-                            echo "Deploying full platform..."
                             helm upgrade --install platform . \
                                 --namespace ${params.NAMESPACE} \
                                 --wait \
