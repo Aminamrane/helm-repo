@@ -138,10 +138,30 @@ pipeline {
             }
         }
         
+        stage('Confirm Prod Deployment') {
+            when {
+                expression { params.ENVIRONMENT == 'prod' }
+            }
+            steps {
+                script {
+                    timeout(time: 10, unit: 'MINUTES') {
+                        input(
+                            message: "⚠️ Tu es sur le point de déployer en PROD. Confirmer le déploiement ?",
+                            ok: "Déployer en PROD"
+                        )
+                    }
+                }
+            }
+        }
+        
         stage('Deploy to Kubernetes') {
             steps {
                 script {
-                    echo "Deploying to Kubernetes namespace: ${params.NAMESPACE}"
+                    if (params.ENVIRONMENT == 'prod') {
+                        echo "🚀 Deploying to PRODUCTION environment (namespace: ${params.NAMESPACE})"
+                    } else {
+                        echo "🔧 Deploying to DEV environment (namespace: ${params.NAMESPACE})"
+                    }
                     
                     withCredentials([
                         file(credentialsId: "${KUBECONFIG_CREDENTIALS}", variable: 'KUBECONFIG_FILE'),
