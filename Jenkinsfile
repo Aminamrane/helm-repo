@@ -1,6 +1,6 @@
 pipeline {
     agent any
-    
+
     parameters {
         choice(
             name: 'SERVICE',
@@ -23,13 +23,13 @@ pipeline {
             description: 'Environment (dev/prod)'
         )
     }
-    
+
     environment {
         DOCKER_USERNAME = 'leogrv22'
         HELM_CHART_PATH = 'platform'
         KUBECONFIG_CREDENTIALS = 'kubeconfig-dev'
     }
-    
+
     stages {
         stage('Checkout') {
             steps {
@@ -39,7 +39,7 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Validate Helm Charts') {
             steps {
                 script {
@@ -51,7 +51,7 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Update Dependencies') {
             steps {
                 script {
@@ -63,37 +63,36 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Update Image Versions') {
             steps {
                 script {
                     echo "Updating image versions in values.yaml..."
                     script {
                         def valuesFile = "${HELM_CHART_PATH}/values.yaml"
-                        // Always use 'dev' tag for DEV environment
                         def imageTag = 'dev'
-                        
+
                         if (params.SERVICE == 'all' || params.SERVICE == 'backend' || params.SERVICE == 'auth') {
                             sh """
                                 sed -i 's|repository:.*auth|repository: ${DOCKER_USERNAME}/auth|g' ${valuesFile} || true
                                 sed -i '/auth:/,/tag:/ s|tag:.*|tag: ${imageTag}|g' ${valuesFile} || true
                             """
                         }
-                        
+
                         if (params.SERVICE == 'all' || params.SERVICE == 'backend' || params.SERVICE == 'users') {
                             sh """
                                 sed -i 's|repository:.*users|repository: ${DOCKER_USERNAME}/users|g' ${valuesFile} || true
                                 sed -i '/users:/,/tag:/ s|tag:.*|tag: ${imageTag}|g' ${valuesFile} || true
                             """
                         }
-                        
+
                         if (params.SERVICE == 'all' || params.SERVICE == 'backend' || params.SERVICE == 'items') {
                             sh """
                                 sed -i 's|repository:.*items|repository: ${DOCKER_USERNAME}/items|g' ${valuesFile} || true
                                 sed -i '/items:/,/tag:/ s|tag:.*|tag: ${imageTag}|g' ${valuesFile} || true
                             """
                         }
-                        
+
                         if (params.SERVICE == 'all' || params.SERVICE == 'frontend') {
                             sh """
                                 sed -i 's|repository:.*frontend|repository: ${DOCKER_USERNAME}/frontend|g' ${valuesFile} || true
@@ -104,27 +103,22 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Install Traefik') {
             steps {
                 script {
                     echo "Installing Traefik Ingress Controller..."
-                    
+
                     withCredentials([
-                        file(credentialsId: "${KUBECONFIG_CREDENTIALS}", variable: 'KUBECONFIG_FILE'),
-                        string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
-                        string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
+                        file(credentialsId: "${KUBECONFIG_CREDENTIALS}", variable: 'KUBECONFIG_FILE')
                     ]) {
                         sh """
                             export KUBECONFIG=\${KUBECONFIG_FILE}
-                            export AWS_ACCESS_KEY_ID=\${AWS_ACCESS_KEY_ID}
-                            export AWS_SECRET_ACCESS_KEY=\${AWS_SECRET_ACCESS_KEY}
-                            export AWS_DEFAULT_REGION=eu-west-3
-                            
+
                             # Add Traefik Helm repo
                             helm repo add traefik https://traefik.github.io/charts || true
                             helm repo update
-                            
+
                             # Install Traefik
                             helm upgrade --install traefik traefik/traefik \
                                 --namespace traefik \
@@ -137,7 +131,7 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Confirm Prod Deployment') {
             when {
                 expression { params.ENVIRONMENT == 'prod' }
@@ -153,7 +147,7 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Deploy to Kubernetes') {
             steps {
                 script {
@@ -162,75 +156,18 @@ pipeline {
                     } else {
                         echo "🔧 Deploying to DEV environment (namespace: ${params.NAMESPACE})"
                     }
-                    
+
                     withCredentials([
-                        file(credentialsId: "${KUBECONFIG_CREDENTIALS}", variable: 'KUBECONFIG_FILE'),
-                        string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
-                        string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
+                        file(credentialsId: "${KUBECONFIG_CREDENTIALS}", variable: 'KUBECONFIG_FILE')
                     ]) {
 
-                        // 1) Création/MAJ du secret DB depuis AWS Secrets Manager (en shell)
+                        // 1) Namespace
                         sh """
                             export KUBECONFIG=\${KUBECONFIG_FILE}
-                            export AWS_ACCESS_KEY_ID=\${AWS_ACCESS_KEY_ID}
-                            export AWS_SECRET_ACCESS_KEY=\${AWS_SECRET_ACCESS_KEY}
-                            export AWS_DEFAULT_REGION=eu-west-3
-
-                            echo "===== DEBUG AWS / K8S ====="
-                            aws sts get-caller-identity
-                            aws configure list
-                            kubectl version --client
-                            kubectl get ns || true
-                            echo "===== END DEBUG ====="
-                            
-                            # Create namespace if it doesn't exist
-                            kubectl create namespace ${params.NAMESPACE} || true
-                            
-                            echo "Fetching database password from AWS Secrets Manager..."
-                            export K8S_NAMESPACE=${params.NAMESPACE}
-                            
-                            python3 << 'PYEOF'
-import json
-import subprocess
-import sys
-import os
-
-# Get secret from AWS
-result = subprocess.run([
-    'aws', 'secretsmanager', 'get-secret-value',
-    '--secret-id', 'microservices-platform-dev-secrets',
-    '--region', 'eu-west-3',
-    '--query', 'SecretString',
-    '--output', 'text'
-], capture_output=True, text=True)
-
-if result.returncode != 0:
-    print(f'Error fetching secret: {result.stderr}', file=sys.stderr)
-    sys.exit(1)
-
-secret_json = json.loads(result.stdout.strip())
-db_password = secret_json['rds_master_password']
-namespace = os.environ.get('K8S_NAMESPACE', 'dev')
-
-# Write password to temp file to avoid shell escaping issues
-with open('/tmp/db_password.txt', 'w') as f:
-    f.write(db_password)
-
-# Create and apply Kubernetes Secret using --from-file
-secret_yaml = subprocess.check_output([
-    'kubectl', 'create', 'secret', 'generic', 'database-credentials',
-    '--from-file=password=/tmp/db_password.txt',
-    '--from-literal=username=admin',
-    '--namespace', namespace,
-    '--dry-run=client', '-o', 'yaml'
-], text=True)
-
-subprocess.run(['kubectl', 'apply', '-f', '-'], input=secret_yaml, text=True, check=True)
-print('Database secret created successfully')
-PYEOF
+                            kubectl get ns ${params.NAMESPACE} >/dev/null 2>&1 || kubectl create ns ${params.NAMESPACE}
                         """
 
-                        // 2) Construire les commandes de cleanup en GROOVY (pas dans sh)
+                        // 2) Cleanup logic (unchanged)
                         List<String> cleanupCommands = []
 
                         if (params.SERVICE == 'backend') {
@@ -269,7 +206,6 @@ PYEOF
                             ]
                         }
 
-                        // 3) Exécuter les commandes de cleanup (en shell, une par une)
                         if (!cleanupCommands.isEmpty()) {
                             cleanupCommands.each { cmd ->
                                 sh """
@@ -280,7 +216,7 @@ PYEOF
                             sleep 3
                         }
 
-                        // 4) Lancer le helm upgrade global (qui va recréer ce qu'on a supprimé)
+                        // 3) Helm deploy
                         sh """
                             export KUBECONFIG=\${KUBECONFIG_FILE}
                             cd ${HELM_CHART_PATH}
@@ -293,29 +229,22 @@ PYEOF
                 }
             }
         }
-        
+
         stage('Verify Deployment') {
             steps {
                 script {
                     echo "Verifying deployment..."
                     withCredentials([
-                        file(credentialsId: "${KUBECONFIG_CREDENTIALS}", variable: 'KUBECONFIG_FILE'),
-                        string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
-                        string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
+                        file(credentialsId: "${KUBECONFIG_CREDENTIALS}", variable: 'KUBECONFIG_FILE')
                     ]) {
                         sh """
                             export KUBECONFIG=\${KUBECONFIG_FILE}
-                            export AWS_ACCESS_KEY_ID=\${AWS_ACCESS_KEY_ID}
-                            export AWS_SECRET_ACCESS_KEY=\${AWS_SECRET_ACCESS_KEY}
-                            export AWS_DEFAULT_REGION=eu-west-3
-                            
-                            # Wait for pods to be ready
+
                             kubectl wait --for=condition=ready pod \
                                 -l app.kubernetes.io/instance=platform \
                                 -n ${params.NAMESPACE} \
                                 --timeout=300s || true
-                            
-                            # Show deployment status
+
                             kubectl get pods -n ${params.NAMESPACE}
                             kubectl get svc -n ${params.NAMESPACE}
                         """
@@ -324,7 +253,7 @@ PYEOF
             }
         }
     }
-    
+
     post {
         success {
             echo "✅ Helm deployment completed successfully!"
