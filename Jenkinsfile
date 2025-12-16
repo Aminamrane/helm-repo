@@ -7,27 +7,16 @@ pipeline {
             choices: ['all', 'backend', 'frontend', 'auth', 'users', 'items', 'gateway'],
             description: 'Service to deploy (all = full platform)'
         )
-        string(
-            name: 'IMAGE_VERSION',
-            defaultValue: 'dev',
-            description: 'Docker image version/tag to deploy'
-        )
-        string(
-            name: 'NAMESPACE',
-            defaultValue: 'dev',
-            description: 'Kubernetes namespace'
-        )
-        string(
-            name: 'ENVIRONMENT',
-            defaultValue: 'dev',
-            description: 'Environment (dev/prod)'
-        )
+        string(name: 'IMAGE_VERSION', defaultValue: 'dev', description: 'Docker image version/tag to deploy')
+        string(name: 'NAMESPACE', defaultValue: 'dev', description: 'Kubernetes namespace')
+        string(name: 'ENVIRONMENT', defaultValue: 'dev', description: 'Environment (dev/prod)')
     }
 
     environment {
         DOCKER_USERNAME = 'leogrv22'
         HELM_CHART_PATH = 'platform'
         KUBECONFIG_CREDENTIALS = 'kubeconfig-dev'
+        AWS_REGION = 'eu-west-3'
     }
 
     stages {
@@ -68,37 +57,36 @@ pipeline {
             steps {
                 script {
                     echo "Updating image versions in values.yaml..."
-                    script {
-                        def valuesFile = "${HELM_CHART_PATH}/values.yaml"
-                        def imageTag = 'dev'
 
-                        if (params.SERVICE == 'all' || params.SERVICE == 'backend' || params.SERVICE == 'auth') {
-                            sh """
-                                sed -i 's|repository:.*auth|repository: ${DOCKER_USERNAME}/auth|g' ${valuesFile} || true
-                                sed -i '/auth:/,/tag:/ s|tag:.*|tag: ${imageTag}|g' ${valuesFile} || true
-                            """
-                        }
+                    def valuesFile = "${HELM_CHART_PATH}/values.yaml"
+                    def imageTag = 'dev'
 
-                        if (params.SERVICE == 'all' || params.SERVICE == 'backend' || params.SERVICE == 'users') {
-                            sh """
-                                sed -i 's|repository:.*users|repository: ${DOCKER_USERNAME}/users|g' ${valuesFile} || true
-                                sed -i '/users:/,/tag:/ s|tag:.*|tag: ${imageTag}|g' ${valuesFile} || true
-                            """
-                        }
+                    if (params.SERVICE == 'all' || params.SERVICE == 'backend' || params.SERVICE == 'auth') {
+                        sh """
+                            sed -i 's|repository:.*auth|repository: ${DOCKER_USERNAME}/auth|g' ${valuesFile} || true
+                            sed -i '/auth:/,/tag:/ s|tag:.*|tag: ${imageTag}|g' ${valuesFile} || true
+                        """
+                    }
 
-                        if (params.SERVICE == 'all' || params.SERVICE == 'backend' || params.SERVICE == 'items') {
-                            sh """
-                                sed -i 's|repository:.*items|repository: ${DOCKER_USERNAME}/items|g' ${valuesFile} || true
-                                sed -i '/items:/,/tag:/ s|tag:.*|tag: ${imageTag}|g' ${valuesFile} || true
-                            """
-                        }
+                    if (params.SERVICE == 'all' || params.SERVICE == 'backend' || params.SERVICE == 'users') {
+                        sh """
+                            sed -i 's|repository:.*users|repository: ${DOCKER_USERNAME}/users|g' ${valuesFile} || true
+                            sed -i '/users:/,/tag:/ s|tag:.*|tag: ${imageTag}|g' ${valuesFile} || true
+                        """
+                    }
 
-                        if (params.SERVICE == 'all' || params.SERVICE == 'frontend') {
-                            sh """
-                                sed -i 's|repository:.*frontend|repository: ${DOCKER_USERNAME}/frontend|g' ${valuesFile} || true
-                                sed -i '/frontend:/,/tag:/ s|tag:.*|tag: ${imageTag}|g' ${valuesFile} || true
-                            """
-                        }
+                    if (params.SERVICE == 'all' || params.SERVICE == 'backend' || params.SERVICE == 'items') {
+                        sh """
+                            sed -i 's|repository:.*items|repository: ${DOCKER_USERNAME}/items|g' ${valuesFile} || true
+                            sed -i '/items:/,/tag:/ s|tag:.*|tag: ${imageTag}|g' ${valuesFile} || true
+                        """
+                    }
+
+                    if (params.SERVICE == 'all' || params.SERVICE == 'frontend') {
+                        sh """
+                            sed -i 's|repository:.*frontend|repository: ${DOCKER_USERNAME}/frontend|g' ${valuesFile} || true
+                            sed -i '/frontend:/,/tag:/ s|tag:.*|tag: ${imageTag}|g' ${valuesFile} || true
+                        """
                     }
                 }
             }
@@ -110,16 +98,19 @@ pipeline {
                     echo "Installing Traefik Ingress Controller..."
 
                     withCredentials([
-                        file(credentialsId: "${KUBECONFIG_CREDENTIALS}", variable: 'KUBECONFIG_FILE')
+                        file(credentialsId: "${KUBECONFIG_CREDENTIALS}", variable: 'KUBECONFIG_FILE'),
+                        string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
+                        string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
                     ]) {
                         sh """
                             export KUBECONFIG=\${KUBECONFIG_FILE}
+                            export AWS_ACCESS_KEY_ID=\${AWS_ACCESS_KEY_ID}
+                            export AWS_SECRET_ACCESS_KEY=\${AWS_SECRET_ACCESS_KEY}
+                            export AWS_DEFAULT_REGION=${AWS_REGION}
 
-                            # Add Traefik Helm repo
                             helm repo add traefik https://traefik.github.io/charts || true
                             helm repo update
 
-                            # Install Traefik
                             helm upgrade --install traefik traefik/traefik \
                                 --namespace traefik \
                                 --create-namespace \
@@ -133,9 +124,7 @@ pipeline {
         }
 
         stage('Confirm Prod Deployment') {
-            when {
-                expression { params.ENVIRONMENT == 'prod' }
-            }
+            when { expression { params.ENVIRONMENT == 'prod' } }
             steps {
                 script {
                     timeout(time: 10, unit: 'MINUTES') {
@@ -151,23 +140,26 @@ pipeline {
         stage('Deploy to Kubernetes') {
             steps {
                 script {
-                    if (params.ENVIRONMENT == 'prod') {
-                        echo "🚀 Deploying to PRODUCTION environment (namespace: ${params.NAMESPACE})"
-                    } else {
-                        echo "🔧 Deploying to DEV environment (namespace: ${params.NAMESPACE})"
-                    }
+                    echo(params.ENVIRONMENT == 'prod'
+                        ? "🚀 Deploying to PRODUCTION environment (namespace: ${params.NAMESPACE})"
+                        : "🔧 Deploying to DEV environment (namespace: ${params.NAMESPACE})"
+                    )
 
                     withCredentials([
-                        file(credentialsId: "${KUBECONFIG_CREDENTIALS}", variable: 'KUBECONFIG_FILE')
+                        file(credentialsId: "${KUBECONFIG_CREDENTIALS}", variable: 'KUBECONFIG_FILE'),
+                        string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
+                        string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
                     ]) {
 
-                        // 1) Namespace
                         sh """
                             export KUBECONFIG=\${KUBECONFIG_FILE}
+                            export AWS_ACCESS_KEY_ID=\${AWS_ACCESS_KEY_ID}
+                            export AWS_SECRET_ACCESS_KEY=\${AWS_SECRET_ACCESS_KEY}
+                            export AWS_DEFAULT_REGION=${AWS_REGION}
+
                             kubectl get ns ${params.NAMESPACE} >/dev/null 2>&1 || kubectl create ns ${params.NAMESPACE}
                         """
 
-                        // 2) Cleanup logic (unchanged)
                         List<String> cleanupCommands = []
 
                         if (params.SERVICE == 'backend') {
@@ -210,15 +202,21 @@ pipeline {
                             cleanupCommands.each { cmd ->
                                 sh """
                                     export KUBECONFIG=\${KUBECONFIG_FILE}
+                                    export AWS_ACCESS_KEY_ID=\${AWS_ACCESS_KEY_ID}
+                                    export AWS_SECRET_ACCESS_KEY=\${AWS_SECRET_ACCESS_KEY}
+                                    export AWS_DEFAULT_REGION=${AWS_REGION}
                                     ${cmd}
                                 """
                             }
                             sleep 3
                         }
 
-                        // 3) Helm deploy
                         sh """
                             export KUBECONFIG=\${KUBECONFIG_FILE}
+                            export AWS_ACCESS_KEY_ID=\${AWS_ACCESS_KEY_ID}
+                            export AWS_SECRET_ACCESS_KEY=\${AWS_SECRET_ACCESS_KEY}
+                            export AWS_DEFAULT_REGION=${AWS_REGION}
+
                             cd ${HELM_CHART_PATH}
                             helm upgrade --install platform . \
                                 --namespace ${params.NAMESPACE} \
@@ -234,11 +232,17 @@ pipeline {
             steps {
                 script {
                     echo "Verifying deployment..."
+
                     withCredentials([
-                        file(credentialsId: "${KUBECONFIG_CREDENTIALS}", variable: 'KUBECONFIG_FILE')
+                        file(credentialsId: "${KUBECONFIG_CREDENTIALS}", variable: 'KUBECONFIG_FILE'),
+                        string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
+                        string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
                     ]) {
                         sh """
                             export KUBECONFIG=\${KUBECONFIG_FILE}
+                            export AWS_ACCESS_KEY_ID=\${AWS_ACCESS_KEY_ID}
+                            export AWS_SECRET_ACCESS_KEY=\${AWS_SECRET_ACCESS_KEY}
+                            export AWS_DEFAULT_REGION=${AWS_REGION}
 
                             kubectl wait --for=condition=ready pod \
                                 -l app.kubernetes.io/instance=platform \
